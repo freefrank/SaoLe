@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 
 import '../core/history_entry.dart';
 import '../core/scan_result.dart';
@@ -33,6 +34,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final _parser = const ScanResultParser();
   bool _busy = false;
 
+  // 变焦滑块随手机倾斜切换左右；双指捏合变焦；镜头切换（长焦/广角）。
+  StreamSubscription<AccelerometerEvent>? _accelSub;
+  bool _sliderOnLeft = false; // 默认右侧（右手拇指）
+  double _zoomStart = 0; // 捏合起始变焦
+  bool _hasMultiLens = false;
+
   // 多码冻结点选覆盖层的数据（非空时在拍摄界面原地冻结）。
   ({
     ImageProvider image,
@@ -42,7 +49,35 @@ class _ScannerScreenState extends State<ScannerScreen> {
   })? _frozen;
 
   @override
+  void initState() {
+    super.initState();
+    // 重力/加速度：手机向哪侧倾，变焦滑块就到哪侧（就近拇指）。符号以实机为准。
+    _accelSub = accelerometerEventStream(
+      samplingPeriod: SensorInterval.uiInterval,
+    ).listen((e) {
+      // 竖持时 e.x < 0 ≈ 左倾、> 0 ≈ 右倾；±1.5 死区防抖。
+      final onLeft = e.x < -1.5 ? true : (e.x > 1.5 ? false : _sliderOnLeft);
+      if (onLeft != _sliderOnLeft && mounted) {
+        setState(() => _sliderOnLeft = onLeft);
+      }
+    });
+    // 相机就绪后查支持的镜头，决定是否显示镜头切换（长焦/广角）按钮。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _probeLenses());
+  }
+
+  Future<void> _probeLenses() async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      final lenses = await _controller.getSupportedLenses();
+      if (mounted && lenses.length > 1) {
+        setState(() => _hasMultiLens = true);
+      }
+    } catch (_) {/* 不支持多镜头则忽略 */}
+  }
+
+  @override
   void dispose() {
+    _accelSub?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -275,7 +310,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        MobileScanner(
+        GestureDetector(
+          onScaleStart: (_) => _zoomStart = _controller.value.zoomScale,
+          onScaleUpdate: (d) {
+            if (d.pointerCount < 2) return; // 只响应双指捏合
+            _controller
+                .setZoomScale((_zoomStart + (d.scale - 1)).clamp(0.0, 1.0));
+          },
+          child: MobileScanner(
           controller: _controller,
           onDetect: _onDetect,
           errorBuilder: (context, error) => Center(
@@ -297,6 +339,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
           ),
+          ),
         ),
         if (_frozen == null)
           Positioned(
@@ -316,7 +359,44 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 ),
                 const SizedBox(width: 8),
                 _RoundBtn(icon: Icons.photo_library, onTap: _pickFromGallery),
+                if (_hasMultiLens) ...[
+                  const SizedBox(width: 8),
+                  _RoundBtn(
+                    icon: Icons.cameraswitch,
+                    onTap: () =>
+                        _controller.switchCamera(const ToggleLensType()),
+                  ),
+                ],
               ],
+            ),
+          ),
+        // 变焦滑块：位置随手机倾斜切到就近一侧（左倾左、右倾右），可拖动。
+        if (_frozen == null)
+          Positioned(
+            left: _sliderOnLeft ? 6 : null,
+            right: _sliderOnLeft ? null : 6,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: SizedBox(
+                    width: 200,
+                    child: ValueListenableBuilder<MobileScannerState>(
+                      valueListenable: _controller,
+                      builder: (context, state, _) => Slider(
+                        value: state.zoomScale.clamp(0.0, 1.0),
+                        onChanged: (v) => _controller.setZoomScale(v),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         if (_frozen != null)
