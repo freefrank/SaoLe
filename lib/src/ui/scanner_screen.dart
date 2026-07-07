@@ -39,6 +39,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Timer? _collectTimer;
   static const _collectWindow = Duration(milliseconds: 200);
 
+  // 多码冻结点选覆盖层的数据（非空时在拍摄界面原地冻结）。
+  ({
+    ImageProvider image,
+    Size size,
+    List<({Rect rect, String value})> targets,
+  })? _frozen;
+
   @override
   void dispose() {
     _collectTimer?.cancel();
@@ -139,27 +146,34 @@ class _ScannerScreenState extends State<ScannerScreen> {
             (rect: _cornersToRect(b.corners), value: b.rawValue!),
     ];
 
-    String? chosen;
     if (image != null &&
         frameCapture != null &&
         frameCapture.size != Size.zero &&
         targets.length == codes.length) {
-      chosen = await showQrTapPicker(
-        context,
-        image: image,
-        imageSize: frameCapture.size,
-        targets: targets,
-      );
-    } else {
-      // 拿不到帧/角点不全：退回文本列表（用累积到的全部码）。
-      chosen = await showQrPickerSheet(context, codes);
+      // 原地冻结：亮出覆盖层，等用户点选/取消（回调里复位 _busy）。
+      setState(() {
+        _frozen = (image: image, size: frameCapture.size, targets: targets);
+      });
+      return;
     }
 
+    // 拿不到帧/角点不全：退回文本列表（用累积到的全部码）。
+    final chosen = await showQrPickerSheet(context, codes);
     if (chosen == null || !mounted) {
       _busy = false; // 取消：继续扫，不退出
       return;
     }
     await _handle(chosen);
+  }
+
+  void _onFrozenPick(String value) {
+    setState(() => _frozen = null);
+    _handle(value); // 其 finally 复位 _busy（非 scanOnly）
+  }
+
+  void _onFrozenCancel() {
+    setState(() => _frozen = null);
+    _busy = false; // 继续扫，不退出
   }
 
   // 四角点 → 外接矩形（图像像素坐标）。
@@ -246,26 +260,37 @@ class _ScannerScreenState extends State<ScannerScreen> {
             ),
           ),
         ),
-        Positioned(
-          top: MediaQuery.paddingOf(context).top + 8,
-          right: 12,
-          child: Row(
-            children: [
-              ValueListenableBuilder<MobileScannerState>(
-                valueListenable: _controller,
-                builder: (context, state, _) {
-                  final on = state.torchState == TorchState.on;
-                  return _RoundBtn(
-                    icon: on ? Icons.flash_on : Icons.flash_off,
-                    onTap: () => _controller.toggleTorch(),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              _RoundBtn(icon: Icons.photo_library, onTap: _pickFromGallery),
-            ],
+        if (_frozen == null)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 8,
+            right: 12,
+            child: Row(
+              children: [
+                ValueListenableBuilder<MobileScannerState>(
+                  valueListenable: _controller,
+                  builder: (context, state, _) {
+                    final on = state.torchState == TorchState.on;
+                    return _RoundBtn(
+                      icon: on ? Icons.flash_on : Icons.flash_off,
+                      onTap: () => _controller.toggleTorch(),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                _RoundBtn(icon: Icons.photo_library, onTap: _pickFromGallery),
+              ],
+            ),
           ),
-        ),
+        if (_frozen != null)
+          Positioned.fill(
+            child: FrozenQrOverlay(
+              image: _frozen!.image,
+              imageSize: _frozen!.size,
+              targets: _frozen!.targets,
+              onPick: _onFrozenPick,
+              onCancel: _onFrozenCancel,
+            ),
+          ),
       ],
     );
   }
