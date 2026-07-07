@@ -38,7 +38,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
   StreamSubscription<AccelerometerEvent>? _accelSub;
   bool _sliderOnLeft = false; // 默认右侧（右手拇指）
   double _zoomStart = 0; // 捏合起始变焦
-  bool _hasMultiLens = false;
+  Set<CameraLensType> _lenses = const {}; // 设备支持的物理镜头
+  CameraLensType _currentLens = CameraLensType.normal;
 
   // 多码冻结点选覆盖层的数据（非空时在拍摄界面原地冻结）。
   ({
@@ -70,9 +71,31 @@ class _ScannerScreenState extends State<ScannerScreen> {
     try {
       final lenses = await _controller.getSupportedLenses();
       if (mounted && lenses.length > 1) {
-        setState(() => _hasMultiLens = true);
+        setState(() => _lenses = lenses);
       }
     } catch (_) {/* 不支持多镜头则忽略 */}
+  }
+
+  // 镜头按等效焦距从广到长排序：超广角 → 主摄 → 长焦。
+  List<CameraLensType> get _orderedLenses => [
+        for (final l in [
+          CameraLensType.wide,
+          CameraLensType.normal,
+          CameraLensType.zoom,
+        ])
+          if (_lenses.contains(l)) l,
+      ];
+
+  String _lensLabel(CameraLensType l) => switch (l) {
+        CameraLensType.wide => '超广角',
+        CameraLensType.normal => '主摄',
+        CameraLensType.zoom => '长焦',
+        CameraLensType.any => '自动',
+      };
+
+  void _selectLens(CameraLensType l) {
+    _controller.switchCamera(SelectCamera(lensType: l));
+    setState(() => _currentLens = l);
   }
 
   @override
@@ -359,14 +382,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 ),
                 const SizedBox(width: 8),
                 _RoundBtn(icon: Icons.photo_library, onTap: _pickFromGallery),
-                if (_hasMultiLens) ...[
-                  const SizedBox(width: 8),
-                  _RoundBtn(
-                    icon: Icons.cameraswitch,
-                    onTap: () =>
-                        _controller.switchCamera(const ToggleLensType()),
-                  ),
-                ],
               ],
             ),
           ),
@@ -395,6 +410,54 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+            ),
+          ),
+        // 镜头选择条：列出设备支持的物理镜头（超广角/主摄/长焦），点选切换。
+        if (_frozen == null && _lenses.length > 1)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final lens in _orderedLenses)
+                      GestureDetector(
+                        onTap: () => _selectLens(lens),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _currentLens == lens
+                                ? Colors.white24
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _lensLabel(lens),
+                            style: TextStyle(
+                              color: _currentLens == lens
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.white,
+                              fontSize: 13,
+                              fontWeight: _currentLens == lens
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
