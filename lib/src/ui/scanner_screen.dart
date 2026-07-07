@@ -33,12 +33,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final _parser = const ScanResultParser();
   bool _busy = false;
 
-  // 多码累积窗口：首次检测到码后短暂多收集几帧，避免多码漏检。
-  final Set<String> _pendingCodes = {};
-  BarcodeCapture? _lastCapture; // 最后一帧，用于冻结图与角点
-  Timer? _collectTimer;
-  static const _collectWindow = Duration(milliseconds: 200);
-
   // 多码冻结点选覆盖层的数据（非空时在拍摄界面原地冻结）。
   ({
     ImageProvider image,
@@ -49,37 +43,25 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   void dispose() {
-    _collectTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
+  // 检测到码即处理：单码零延迟出结果；多码原地冻结点选（漏检用"再次深度检测"补）。
   void _onDetect(BarcodeCapture capture) {
     if (_busy) return;
-    final valid =
-        capture.barcodes.where((b) => (b.rawValue?.isNotEmpty ?? false));
+    final valid = capture.barcodes
+        .where((b) => (b.rawValue?.isNotEmpty ?? false))
+        .toList();
     if (valid.isEmpty) return;
-    // 累积这一帧的码，保留最新帧（用于冻结图/角点）。
-    _pendingCodes.addAll(valid.map((b) => b.rawValue!));
-    _lastCapture = capture;
-    // 首次检测启动窗口，窗口内后续帧继续累积。
-    _collectTimer ??= Timer(_collectWindow, _finishCollect);
-  }
-
-  void _finishCollect() {
-    _collectTimer = null;
-    if (!mounted || _busy) {
-      _pendingCodes.clear();
-      _lastCapture = null;
-      return;
-    }
     _busy = true;
-    final codes = _pendingCodes.toList();
-    final frame = _lastCapture;
-    _pendingCodes.clear();
-    _lastCapture = null;
+    final codes = <String>{for (final b in valid) b.rawValue!}.toList();
     unawaited(_process(
-        codes: codes, frameCapture: frame, galleryImage: null, sourcePath: null));
+      codes: codes,
+      frameCapture: capture,
+      galleryImage: null,
+      sourcePath: null,
+    ));
   }
 
   Future<void> _pickFromGallery() async {
