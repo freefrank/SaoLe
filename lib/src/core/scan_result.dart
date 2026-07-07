@@ -58,8 +58,13 @@ class TextResult extends ScanResult {
 class ScanResultParser {
   const ScanResultParser();
 
-  static final _embeddedUrl = RegExp(r'https?://[^\s]+', caseSensitive: false);
+  // 停在空白或常见 CJK 闭合标点前（中文场景 URL 后常无空格）。
+  static final _embeddedUrl =
+      RegExp(r'https?://[^\s，。；！？、）】》「」『』]+', caseSensitive: false);
   static final _scheme = RegExp(r'^([a-zA-Z][a-zA-Z0-9+.\-]*):');
+  // 再 strip 尾部 ASCII/CJK 标点（如英文括号包裹、句尾逗号句号）。
+  static final _trailingPunct =
+      RegExp(r'[)\]}>.,;!?，。；！？）】》、]+$');
 
   ScanResult parse(String raw) {
     final lower = raw.toLowerCase();
@@ -81,12 +86,13 @@ class ScanResultParser {
     }
 
     final m = _scheme.firstMatch(raw);
-    if (m != null) {
+    if (m != null && raw.contains('://')) {
       return AppLinkResult(raw, m.group(1)!.toLowerCase());
     }
 
     final e = _embeddedUrl.firstMatch(raw);
-    return TextResult(raw, embeddedUrl: e?.group(0));
+    final url = e?.group(0)?.replaceAll(_trailingPunct, '');
+    return TextResult(raw, embeddedUrl: url);
   }
 
   WifiResult _parseWifi(String raw) {
@@ -120,7 +126,8 @@ class ScanResultParser {
         case 'P':
           password = value;
         case 'T':
-          security = value.isEmpty ? 'nopass' : value;
+          final up = value.toUpperCase();
+          security = (value.isEmpty || up == 'NOPASS') ? 'nopass' : up;
         case 'H':
           hidden = value.toLowerCase() == 'true';
       }

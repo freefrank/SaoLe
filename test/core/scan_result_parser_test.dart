@@ -30,6 +30,21 @@ void main() {
       expect(r, isA<AppLinkResult>());
       expect(r.raw, raw);
     });
+    test('KEY:VALUE 无 :// 归 Text（SN:00123456）', () {
+      expect(p.parse('SN:00123456'), isA<TextResult>());
+    });
+    test('危险 scheme 无 :// 归 Text（javascript:）', () {
+      expect(p.parse('javascript:alert(1)'), isA<TextResult>());
+    });
+    test('magnet:/bitcoin: 无 :// 归 Text', () {
+      expect(p.parse('magnet:?xt=urn:btih:abc'), isA<TextResult>());
+      expect(p.parse('bitcoin:1AaddrX'), isA<TextResult>());
+    });
+    test('含 :// 的 scheme 仍是 AppLink', () {
+      final r = p.parse('steam://run/570');
+      expect(r, isA<AppLinkResult>());
+      expect((r as AppLinkResult).scheme, 'steam');
+    });
   });
 
   group('WiFi', () {
@@ -70,6 +85,34 @@ void main() {
       expect(() => p.parse('WIFI:'), returnsNormally);
       expect(p.parse('WIFI:'), isA<WifiResult>());
     });
+    test('security 归一化 T:wpa → WPA', () {
+      final r = p.parse('WIFI:S:N;T:wpa;P:x;;') as WifiResult;
+      expect(r.security, 'WPA');
+    });
+    test('H 字段缺失 → hidden false', () {
+      final r = p.parse('WIFI:S:N;T:WPA;P:x;;') as WifiResult;
+      expect(r.hidden, false);
+    });
+    test('小写前缀+小写键也解析', () {
+      final r = p.parse('wifi:s:Net;t:wpa;;') as WifiResult;
+      expect(r.ssid, 'Net');
+      expect(r.security, 'WPA');
+    });
+    test('值内裸冒号保留', () {
+      final r = p.parse('WIFI:S:N;T:WPA;P:a:b;;') as WifiResult;
+      expect(r.password, 'a:b');
+    });
+    test('末尾孤立反斜杠不崩', () {
+      expect(() => p.parse(r'WIFI:S:a\'), returnsNormally);
+    });
+  });
+
+  group('parse 绝不抛异常', () {
+    for (final x in [r'\', r'WIFI:\', ':::', 'a:', '://', '   ']) {
+      test('输入 ${x.isEmpty ? '(empty)' : x}', () {
+        expect(() => p.parse(x), returnsNormally);
+      });
+    }
   });
 
   group('scheme 短链', () {
@@ -98,6 +141,10 @@ void main() {
     });
     test('文本内含网址→提取 embeddedUrl', () {
       final r = p.parse('看这里 https://ex.com/x 谢谢') as TextResult;
+      expect(r.embeddedUrl, 'https://ex.com/x');
+    });
+    test('中文括号包裹的网址→strip 尾部标点', () {
+      final r = p.parse('看（https://ex.com/x）好') as TextResult;
       expect(r.embeddedUrl, 'https://ex.com/x');
     });
     test('空串不崩', () {
