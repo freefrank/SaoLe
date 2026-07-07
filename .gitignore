@@ -47,3 +47,6 @@ app.*.map.json
 # 签名密钥（绝不提交）
 /android/key.properties
 /android/*.jks
+
+# 构建产物 APK（不提交）
+/SaoLe-*.apk
