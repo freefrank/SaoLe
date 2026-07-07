@@ -16,10 +16,11 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: const [ScannerScreen(), HistoryScreen(), SettingsScreen()],
-      ),
+      body: switch (_index) {
+        0 => const ScannerScreen(),
+        1 => const HistoryScreen(),
+        _ => const SettingsScreen(),
+      },
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),

@@ -54,9 +54,14 @@ class MainActivity : FlutterActivity() {
                 startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
                 return true
             }
+            val sec = security.uppercase()
             val builder = WifiNetworkSuggestion.Builder().setSsid(ssid)
             if (hidden) builder.setIsHiddenSsid(true)
-            if (security.uppercase() == "WPA") builder.setWpa2Passphrase(password)
+            when {
+                sec.startsWith("WPA3") || sec == "SAE" -> builder.setWpa3Passphrase(password)
+                sec.startsWith("WPA") -> builder.setWpa2Passphrase(password)
+                // nopass / 开放网络：不设密码
+            }
             val suggestions = arrayListOf(builder.build())
             val addIntent = Intent(Settings.ACTION_WIFI_ADD_NETWORKS).apply {
                 putParcelableArrayListExtra(Settings.EXTRA_WIFI_NETWORK_LIST, suggestions)

@@ -5,11 +5,12 @@ class Launcher {
   const Launcher();
 
   /// 外部打开一个 URI 字符串。畸形串或无 app 处理 → false（不抛）。
+  /// 不用 canLaunchUrl 预检：它受 Android 11+ 包可见性限制，会对未在
+  /// `<queries>` 声明的自定义 scheme（fido/weixin/…）误报为不可开。
   Future<bool> open(String raw) async {
     final uri = Uri.tryParse(raw);
     if (uri == null) return false;
     try {
-      if (!await canLaunchUrl(uri)) return false;
       return await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       return false;

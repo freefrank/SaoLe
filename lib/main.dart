@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -12,14 +14,27 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 冷启动优化：launch mode 探测 + 两个 store 加载并行（Dart 3 record .wait）。
-  final (mode, history, settings) = await (
-    _launchMode(),
-    HistoryStore.forApp(),
-    SettingsStore.forApp(),
-  ).wait;
+  // 顶层兜底：任一 Future 抛错也不白屏。
+  String mode = 'normal';
+  HistoryStore history;
+  SettingsStore settings;
+  try {
+    final r = await (
+      _launchMode(),
+      HistoryStore.forApp(),
+      SettingsStore.forApp(),
+    ).wait;
+    mode = r.$1;
+    history = r.$2;
+    settings = r.$3;
+  } catch (_) {
+    // 极端情况下（磁盘/权限）退化为可用的空态。
+    history = HistoryStore(file: File('${Directory.systemTemp.path}/saole_history.json'));
+    settings = await SettingsStore.forApp();
+  }
 
   runApp(SaoLeApp(
-    scanOnly: mode == 'scan_only',
+    initialScanOnly: mode == 'scan_only',
     history: history,
     settings: settings,
   ));
@@ -37,16 +52,49 @@ Future<String> _launchMode() async {
   }
 }
 
-class SaoLeApp extends StatelessWidget {
-  final bool scanOnly;
+class SaoLeApp extends StatefulWidget {
+  final bool initialScanOnly;
   final HistoryStore history;
   final SettingsStore settings;
   const SaoLeApp({
     super.key,
-    required this.scanOnly,
+    required this.initialScanOnly,
     required this.history,
     required this.settings,
   });
+
+  @override
+  State<SaoLeApp> createState() => _SaoLeAppState();
+}
+
+class _SaoLeAppState extends State<SaoLeApp> with WidgetsBindingObserver {
+  late bool _scanOnly = widget.initialScanOnly;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 磁贴/小组件热启动时经 onNewIntent 更新原生 mode；回到前台重查并切换，
+  // 避免 scan_only 不生效 / scanOnly UI 残留。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _launchMode().then((mode) {
+        final scanOnly = mode == 'scan_only';
+        if (mounted && scanOnly != _scanOnly) {
+          setState(() => _scanOnly = scanOnly);
+        }
+      });
+    }
+  }
 
   ThemeMode _themeMode(SaoBrightness b) => switch (b) {
         SaoBrightness.system => ThemeMode.system,
@@ -58,8 +106,8 @@ class SaoLeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: history),
-        ChangeNotifierProvider.value(value: settings),
+        ChangeNotifierProvider.value(value: widget.history),
+        ChangeNotifierProvider.value(value: widget.settings),
       ],
       child: Consumer<SettingsStore>(
         builder: (context, s, _) => MaterialApp(
@@ -68,7 +116,7 @@ class SaoLeApp extends StatelessWidget {
           theme: buildSaoTheme(Brightness.light),
           darkTheme: buildSaoTheme(Brightness.dark),
           themeMode: _themeMode(s.brightness),
-          home: scanOnly
+          home: _scanOnly
               ? const Scaffold(body: ScannerScreen(scanOnly: true))
               : const HomeShell(),
         ),

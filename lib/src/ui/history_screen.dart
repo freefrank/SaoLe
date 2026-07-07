@@ -38,7 +38,7 @@ class HistoryScreen extends StatelessWidget {
               itemBuilder: (context, i) {
                 final e = entries[i];
                 return Dismissible(
-                  key: ValueKey('${e.timestamp.microsecondsSinceEpoch}_$i'),
+                  key: ObjectKey(e),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     color: Colors.red,
@@ -46,7 +46,7 @@ class HistoryScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 20),
                     child: const Icon(Icons.delete, color: Colors.white),
                   ),
-                  onDismissed: (_) => store.removeAt(i),
+                  onDismissed: (_) => store.removeEntry(e),
                   child: ListTile(
                     leading: Icon(_icons[e.type] ?? Icons.notes),
                     title: Text(e.content, maxLines: 1, overflow: TextOverflow.ellipsis),

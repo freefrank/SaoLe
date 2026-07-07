@@ -52,6 +52,22 @@ void main() {
     expect(s.entries, isEmpty);
   });
 
+  test('removeEntry 按实体删除中间一条', () async {
+    final s = HistoryStore(file: file);
+    await s.load();
+    await s.add(entry('a'));
+    await s.add(entry('b'));
+    await s.add(entry('c'));
+    // entries 现为 ['c', 'b', 'a']（最新在前），按实体删中间的 'b'。
+    final middle = s.entries.firstWhere((e) => e.content == 'b');
+    await s.removeEntry(middle);
+    expect(s.entries.map((e) => e.content).toList(), ['c', 'a']);
+
+    final reloaded = HistoryStore(file: file);
+    await reloaded.load();
+    expect(reloaded.entries.map((e) => e.content).toList(), ['c', 'a']);
+  });
+
   test('notifyListeners 在变更时触发', () async {
     final s = HistoryStore(file: file);
     await s.load();

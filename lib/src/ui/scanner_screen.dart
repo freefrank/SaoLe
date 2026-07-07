@@ -42,8 +42,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   Future<void> _pickFromGallery() async {
+    if (_busy) return;
     final file = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (file == null) return;
+    _busy = true;
     try {
       final result = await _controller.analyzeImage(file.path);
       final code = result?.barcodes
@@ -52,42 +54,46 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (!mounted) return;
       if (code == null) {
         _toast('图片里没找到二维码');
+        _busy = false;
         return;
       }
-      _busy = true;
-      await _handle(code);
+      await _handle(code); // 其 finally 会复位 _busy（非 scanOnly）
     } catch (_) {
       if (mounted) _toast('识别失败');
+      _busy = false;
     }
   }
 
   Future<void> _handle(String raw) async {
     final settings = context.read<SettingsStore>();
-    final result = _parser.parse(raw);
+    try {
+      final result = _parser.parse(raw);
+      if (settings.haptics) HapticFeedback.mediumImpact();
+      if (settings.keepHistory) {
+        await context
+            .read<HistoryStore>()
+            .add(HistoryEntry.fromScan(result, DateTime.now()));
+      }
 
-    if (settings.haptics) HapticFeedback.mediumImpact();
-    if (settings.keepHistory) {
-      await context
-          .read<HistoryStore>()
-          .add(HistoryEntry.fromScan(result, DateTime.now()));
-    }
+      // FIDO：无条件直开（认证要快）；唤不起则弹面板兜底，不静默失败。
+      if (result is FidoResult) {
+        final ok = await const Launcher().open(result.raw);
+        if (!ok && mounted) await showResultSheet(context, result);
+        return;
+      }
+      // 自动打开（默认关，防钓鱼）：仅 URL/AppLink；失败兜底面板。
+      if (settings.autoOpen &&
+          (result is UrlResult || result is AppLinkResult)) {
+        final ok = await const Launcher().open(result.raw);
+        if (!ok && mounted) await showResultSheet(context, result);
+        return;
+      }
 
-    // FIDO：无条件直开，不弹面板（认证流程要快）。
-    if (result is FidoResult) {
-      await const Launcher().open(result.raw);
+      if (!mounted) return;
+      await showResultSheet(context, result);
+    } finally {
       _finishOrResume(settings);
-      return;
     }
-    // 自动打开（默认关，防钓鱼）：仅 URL/AppLink。
-    if (settings.autoOpen && (result is UrlResult || result is AppLinkResult)) {
-      await const Launcher().open(result.raw);
-      _finishOrResume(settings);
-      return;
-    }
-
-    if (!mounted) return;
-    await showResultSheet(context, result);
-    _finishOrResume(settings);
   }
 
   void _finishOrResume(SettingsStore settings) {

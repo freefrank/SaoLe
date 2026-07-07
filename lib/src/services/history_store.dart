@@ -41,25 +41,36 @@ class HistoryStore extends ChangeNotifier {
 
   Future<void> add(HistoryEntry e) async {
     _entries.insert(0, e);
-    await _flush();
     notifyListeners();
+    await _flush();
+  }
+
+  Future<void> removeEntry(HistoryEntry e) async {
+    if (_entries.remove(e)) {
+      notifyListeners();
+      await _flush();
+    }
   }
 
   Future<void> removeAt(int index) async {
     if (index < 0 || index >= _entries.length) return;
     _entries.removeAt(index);
-    await _flush();
     notifyListeners();
+    await _flush();
   }
 
   Future<void> clear() async {
     _entries.clear();
-    await _flush();
     notifyListeners();
+    await _flush();
   }
 
   Future<void> _flush() async {
-    final data = jsonEncode(_entries.map((e) => e.toJson()).toList());
-    await file.writeAsString(data);
+    try {
+      final data = jsonEncode(_entries.map((e) => e.toJson()).toList());
+      await file.writeAsString(data);
+    } catch (_) {
+      // 落盘失败不影响内存态与 UI；下次变更再尝试。
+    }
   }
 }
