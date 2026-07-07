@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +12,7 @@ import '../services/history_store.dart';
 import '../services/settings_store.dart';
 import '../services/platform/launcher.dart';
 import 'qr_picker.dart';
+import 'qr_tap_picker.dart';
 import 'result_sheet.dart';
 
 /// 扫码主界面。scanOnly=true 时为快捷入口（磁贴/小组件）：处理完即退出，不进主壳。
@@ -21,8 +24,10 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  final MobileScannerController _controller =
-      MobileScannerController(detectionSpeed: DetectionSpeed.noDuplicates);
+  final MobileScannerController _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    returnImage: true,
+  );
   final _parser = const ScanResultParser();
   bool _busy = false;
 
@@ -34,10 +39,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_busy) return;
-    final codes = _extractCodes(capture);
-    if (codes.isEmpty) return;
+    if (!capture.barcodes.any((b) => (b.rawValue?.isNotEmpty ?? false))) return;
     _busy = true;
-    await _process(codes);
+    await _process(capture, galleryImage: null);
   }
 
   Future<void> _pickFromGallery() async {
@@ -47,45 +51,87 @@ class _ScannerScreenState extends State<ScannerScreen> {
     _busy = true;
     try {
       final capture = await _controller.analyzeImage(file.path);
-      final codes = capture == null ? <String>[] : _extractCodes(capture);
       if (!mounted) return;
-      if (codes.isEmpty) {
+      final hasCode = capture != null &&
+          capture.barcodes.any((b) => (b.rawValue?.isNotEmpty ?? false));
+      if (!hasCode) {
         _toast('图片里没找到二维码');
         _busy = false;
         return;
       }
-      await _process(codes);
+      await _process(capture, galleryImage: FileImage(File(file.path)));
     } catch (_) {
       if (mounted) _toast('识别失败');
       _busy = false;
     }
   }
 
-  // 从一次检测里取出所有非空原始串并去重（一帧/一图可能有多个码）。
-  List<String> _extractCodes(BarcodeCapture capture) => <String>{
-        ...capture.barcodes
-            .map((b) => b.rawValue)
-            .whereType<String>()
-            .where((v) => v.isNotEmpty),
-      }.toList();
+  // 统一入口：单个码直接出结果；多个码在冻结画面上点选（回退文本列表）。
+  Future<void> _process(
+    BarcodeCapture capture, {
+    required ImageProvider? galleryImage,
+  }) async {
+    final valid = capture.barcodes
+        .where((b) => (b.rawValue?.isNotEmpty ?? false))
+        .toList();
+    final codes = <String>{for (final b in valid) b.rawValue!}.toList();
 
-  // 统一入口：单个直接出结果；多个先让用户选一个。取消则复位闩锁继续扫。
-  Future<void> _process(List<String> codes) async {
-    String? chosen;
-    if (codes.length == 1) {
-      chosen = codes.first;
-    } else {
-      if (!mounted) {
-        _busy = false;
-        return;
-      }
-      chosen = await showQrPickerSheet(context, codes);
-    }
-    if (chosen == null || !mounted) {
-      _busy = false; // 用户取消选择：继续扫，不退出
+    if (codes.isEmpty) {
+      _busy = false;
       return;
     }
-    await _handle(chosen); // 其 finally 复位 _busy（非 scanOnly）
+    if (codes.length == 1) {
+      await _handle(codes.first); // finally 复位 _busy（非 scanOnly）
+      return;
+    }
+
+    // 多码：优先冻结画面点选。
+    final image = galleryImage ??
+        (capture.image != null ? MemoryImage(capture.image!) : null);
+    final targets = <({Rect rect, String value})>[
+      for (final b in valid)
+        if (b.corners.length >= 3)
+          (rect: _cornersToRect(b.corners), value: b.rawValue!),
+    ];
+
+    if (!mounted) {
+      _busy = false;
+      return;
+    }
+
+    String? chosen;
+    if (image != null &&
+        capture.size != Size.zero &&
+        targets.length == codes.length) {
+      chosen = await showQrTapPicker(
+        context,
+        image: image,
+        imageSize: capture.size,
+        targets: targets,
+      );
+    } else {
+      // 拿不到帧/角点：退回文本列表选择。
+      chosen = await showQrPickerSheet(context, codes);
+    }
+
+    if (chosen == null || !mounted) {
+      _busy = false; // 取消：继续扫，不退出
+      return;
+    }
+    await _handle(chosen);
+  }
+
+  // 四角点 → 外接矩形（图像像素坐标）。
+  Rect _cornersToRect(List<Offset> corners) {
+    var minX = corners.first.dx, maxX = corners.first.dx;
+    var minY = corners.first.dy, maxY = corners.first.dy;
+    for (final c in corners) {
+      if (c.dx < minX) minX = c.dx;
+      if (c.dx > maxX) maxX = c.dx;
+      if (c.dy < minY) minY = c.dy;
+      if (c.dy > maxY) maxY = c.dy;
+    }
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
   Future<void> _handle(String raw) async {
