@@ -37,7 +37,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final Set<String> _pendingCodes = {};
   BarcodeCapture? _lastCapture; // 最后一帧，用于冻结图与角点
   Timer? _collectTimer;
-  static const _collectWindow = Duration(milliseconds: 400);
+  static const _collectWindow = Duration(milliseconds: 200);
 
   @override
   void dispose() {
