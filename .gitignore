@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 签名密钥（绝不提交）
+/android/key.properties
+/android/*.jks
+
+# 构建产物 APK（不提交）
+/SaoLe-*.apk

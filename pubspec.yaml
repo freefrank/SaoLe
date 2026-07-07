@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.2.0+3
 
 environment:
   sdk: ^3.12.2
@@ -35,6 +35,22 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # 扫码核心
+  mobile_scanner: ^7.2.0
+  # 状态管理（轻量，冷启动快；不用 riverpod）
+  provider: ^6.1.2
+  # 历史 JSON 落盘目录
+  path_provider: ^2.1.5
+  # 设置持久化
+  shared_preferences: ^2.3.3
+  # URL / App 链接直开
+  url_launcher: ^6.3.2
+  # 结果分享
+  share_plus: ^10.1.4
+  # 相册选图识别
+  image_picker: ^1.1.2
+  sensors_plus: ^7.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -45,6 +61,17 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # 生成各密度 launcher 图标 + Android 12 adaptive icon
+  flutter_launcher_icons: ^0.14.4
+
+# 应用图标配置：品牌蓝底 + 白色扫码取景框
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#2F6BFF"
+  adaptive_icon_foreground: "assets/icon/foreground.png"
+  min_sdk_android: 31
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
