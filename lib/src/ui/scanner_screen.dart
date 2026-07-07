@@ -12,7 +12,6 @@ import '../core/scan_result.dart';
 import '../services/history_store.dart';
 import '../services/settings_store.dart';
 import '../services/platform/launcher.dart';
-import 'qr_picker.dart';
 import 'qr_tap_picker.dart';
 import 'result_sheet.dart';
 
@@ -149,7 +148,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     if (image != null &&
         frameCapture != null &&
         frameCapture.size != Size.zero &&
-        targets.length == codes.length) {
+        targets.isNotEmpty) {
       // 原地冻结：亮出覆盖层，等用户点选/取消（回调里复位 _busy）。
       setState(() {
         _frozen = (image: image, size: frameCapture.size, targets: targets);
@@ -157,13 +156,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
       return;
     }
 
-    // 拿不到帧/角点不全：退回文本列表（用累积到的全部码）。
-    final chosen = await showQrPickerSheet(context, codes);
-    if (chosen == null || !mounted) {
-      _busy = false; // 取消：继续扫，不退出
-      return;
-    }
-    await _handle(chosen);
+    // 无法冻结点选（极少见：无帧/无角点）：放弃本次，继续扫。
+    _busy = false;
   }
 
   void _onFrozenPick(String value) {
