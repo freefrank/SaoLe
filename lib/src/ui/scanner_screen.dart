@@ -9,6 +9,7 @@ import '../core/scan_result.dart';
 import '../services/history_store.dart';
 import '../services/settings_store.dart';
 import '../services/platform/launcher.dart';
+import 'qr_picker.dart';
 import 'result_sheet.dart';
 
 /// 扫码主界面。scanOnly=true 时为快捷入口（磁贴/小组件）：处理完即退出，不进主壳。
@@ -33,12 +34,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_busy) return;
-    final code = capture.barcodes
-        .map((b) => b.rawValue)
-        .firstWhere((v) => v != null && v.isNotEmpty, orElse: () => null);
-    if (code == null) return;
+    final codes = _extractCodes(capture);
+    if (codes.isEmpty) return;
     _busy = true;
-    await _handle(code);
+    await _process(codes);
   }
 
   Future<void> _pickFromGallery() async {
@@ -47,21 +46,46 @@ class _ScannerScreenState extends State<ScannerScreen> {
     if (file == null) return;
     _busy = true;
     try {
-      final result = await _controller.analyzeImage(file.path);
-      final code = result?.barcodes
-          .map((b) => b.rawValue)
-          .firstWhere((v) => v != null && v.isNotEmpty, orElse: () => null);
+      final capture = await _controller.analyzeImage(file.path);
+      final codes = capture == null ? <String>[] : _extractCodes(capture);
       if (!mounted) return;
-      if (code == null) {
+      if (codes.isEmpty) {
         _toast('图片里没找到二维码');
         _busy = false;
         return;
       }
-      await _handle(code); // 其 finally 会复位 _busy（非 scanOnly）
+      await _process(codes);
     } catch (_) {
       if (mounted) _toast('识别失败');
       _busy = false;
     }
+  }
+
+  // 从一次检测里取出所有非空原始串并去重（一帧/一图可能有多个码）。
+  List<String> _extractCodes(BarcodeCapture capture) => <String>{
+        ...capture.barcodes
+            .map((b) => b.rawValue)
+            .whereType<String>()
+            .where((v) => v.isNotEmpty),
+      }.toList();
+
+  // 统一入口：单个直接出结果；多个先让用户选一个。取消则复位闩锁继续扫。
+  Future<void> _process(List<String> codes) async {
+    String? chosen;
+    if (codes.length == 1) {
+      chosen = codes.first;
+    } else {
+      if (!mounted) {
+        _busy = false;
+        return;
+      }
+      chosen = await showQrPickerSheet(context, codes);
+    }
+    if (chosen == null || !mounted) {
+      _busy = false; // 用户取消选择：继续扫，不退出
+      return;
+    }
+    await _handle(chosen); // 其 finally 复位 _busy（非 scanOnly）
   }
 
   Future<void> _handle(String raw) async {
