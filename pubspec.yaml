@@ -35,6 +35,21 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # 扫码核心
+  mobile_scanner: ^7.2.0
+  # 状态管理（轻量，冷启动快；不用 riverpod）
+  provider: ^6.1.2
+  # 历史 JSON 落盘目录
+  path_provider: ^2.1.5
+  # 设置持久化
+  shared_preferences: ^2.3.3
+  # URL / App 链接直开
+  url_launcher: ^6.3.2
+  # 结果分享
+  share_plus: ^10.1.4
+  # 相册选图识别
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
