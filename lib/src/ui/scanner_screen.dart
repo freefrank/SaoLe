@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -27,21 +28,49 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     returnImage: true,
+    cameraResolution: const Size(1920, 1080),
   );
   final _parser = const ScanResultParser();
   bool _busy = false;
 
+  // 多码累积窗口：首次检测到码后短暂多收集几帧，避免多码漏检。
+  final Set<String> _pendingCodes = {};
+  BarcodeCapture? _lastCapture; // 最后一帧，用于冻结图与角点
+  Timer? _collectTimer;
+  static const _collectWindow = Duration(milliseconds: 400);
+
   @override
   void dispose() {
+    _collectTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _onDetect(BarcodeCapture capture) async {
+  void _onDetect(BarcodeCapture capture) {
     if (_busy) return;
-    if (!capture.barcodes.any((b) => (b.rawValue?.isNotEmpty ?? false))) return;
+    final valid =
+        capture.barcodes.where((b) => (b.rawValue?.isNotEmpty ?? false));
+    if (valid.isEmpty) return;
+    // 累积这一帧的码，保留最新帧（用于冻结图/角点）。
+    _pendingCodes.addAll(valid.map((b) => b.rawValue!));
+    _lastCapture = capture;
+    // 首次检测启动窗口，窗口内后续帧继续累积。
+    _collectTimer ??= Timer(_collectWindow, _finishCollect);
+  }
+
+  void _finishCollect() {
+    _collectTimer = null;
+    if (!mounted || _busy) {
+      _pendingCodes.clear();
+      _lastCapture = null;
+      return;
+    }
     _busy = true;
-    await _process(capture, galleryImage: null);
+    final codes = _pendingCodes.toList();
+    final frame = _lastCapture;
+    _pendingCodes.clear();
+    _lastCapture = null;
+    unawaited(_process(codes: codes, frameCapture: frame, galleryImage: null));
   }
 
   Future<void> _pickFromGallery() async {
@@ -52,14 +81,22 @@ class _ScannerScreenState extends State<ScannerScreen> {
     try {
       final capture = await _controller.analyzeImage(file.path);
       if (!mounted) return;
-      final hasCode = capture != null &&
-          capture.barcodes.any((b) => (b.rawValue?.isNotEmpty ?? false));
-      if (!hasCode) {
+      final codes = capture == null
+          ? <String>[]
+          : <String>{
+              for (final b in capture.barcodes)
+                if (b.rawValue?.isNotEmpty ?? false) b.rawValue!,
+            }.toList();
+      if (codes.isEmpty) {
         _toast('图片里没找到二维码');
         _busy = false;
         return;
       }
-      await _process(capture, galleryImage: FileImage(File(file.path)));
+      await _process(
+        codes: codes,
+        frameCapture: capture,
+        galleryImage: FileImage(File(file.path)),
+      );
     } catch (_) {
       if (mounted) _toast('识别失败');
       _busy = false;
@@ -67,15 +104,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   // 统一入口：单个码直接出结果；多个码在冻结画面上点选（回退文本列表）。
-  Future<void> _process(
-    BarcodeCapture capture, {
+  // codes 已去重；frameCapture 提供冻结图与角点（实时=最后一帧，相册=该图）。
+  Future<void> _process({
+    required List<String> codes,
+    required BarcodeCapture? frameCapture,
     required ImageProvider? galleryImage,
   }) async {
-    final valid = capture.barcodes
-        .where((b) => (b.rawValue?.isNotEmpty ?? false))
-        .toList();
-    final codes = <String>{for (final b in valid) b.rawValue!}.toList();
-
     if (codes.isEmpty) {
       _busy = false;
       return;
@@ -85,32 +119,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
       return;
     }
 
-    // 多码：优先冻结画面点选。
-    final image = galleryImage ??
-        (capture.image != null ? MemoryImage(capture.image!) : null);
-    final targets = <({Rect rect, String value})>[
-      for (final b in valid)
-        if (b.corners.length >= 3)
-          (rect: _cornersToRect(b.corners), value: b.rawValue!),
-    ];
-
     if (!mounted) {
       _busy = false;
       return;
     }
 
+    // 多码：优先冻结画面点选。角点取自 frameCapture，仅保留 codes 里的、且每值一次。
+    final image = galleryImage ??
+        (frameCapture?.image != null ? MemoryImage(frameCapture!.image!) : null);
+    final codeSet = codes.toSet();
+    final seen = <String>{};
+    final targets = <({Rect rect, String value})>[
+      if (frameCapture != null)
+        for (final b in frameCapture.barcodes)
+          if ((b.rawValue?.isNotEmpty ?? false) &&
+              codeSet.contains(b.rawValue) &&
+              b.corners.length >= 3 &&
+              seen.add(b.rawValue!))
+            (rect: _cornersToRect(b.corners), value: b.rawValue!),
+    ];
+
     String? chosen;
     if (image != null &&
-        capture.size != Size.zero &&
+        frameCapture != null &&
+        frameCapture.size != Size.zero &&
         targets.length == codes.length) {
       chosen = await showQrTapPicker(
         context,
         image: image,
-        imageSize: capture.size,
+        imageSize: frameCapture.size,
         targets: targets,
       );
     } else {
-      // 拿不到帧/角点：退回文本列表选择。
+      // 拿不到帧/角点不全：退回文本列表（用累积到的全部码）。
       chosen = await showQrPickerSheet(context, codes);
     }
 
