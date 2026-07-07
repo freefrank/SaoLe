@@ -129,6 +129,18 @@ void main() {
     });
   });
 
+  group('FIDO', () {
+    test('FIDO:/ 单斜杠识别为 FidoResult', () {
+      expect(p.parse('FIDO:/1234ABCD'), isA<FidoResult>());
+    });
+    test('大小写不敏感', () {
+      expect(p.parse('fido:/xyz'), isA<FidoResult>());
+    });
+    test('raw 原样保留', () {
+      expect(p.parse('FIDO:/abc').raw, 'FIDO:/abc');
+    });
+  });
+
   group('Text 兜底', () {
     test('纯文本', () {
       final r = p.parse('just some text') as TextResult;

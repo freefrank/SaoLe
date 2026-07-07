@@ -48,6 +48,11 @@ class GeoResult extends ScanResult {
   const GeoResult(super.raw);
 }
 
+/// FIDO/caBLE 配对链接（FIDO:/…），交系统 passkey/安全密钥处理。
+class FidoResult extends ScanResult {
+  const FidoResult(super.raw);
+}
+
 /// 兜底纯文本；若内部含网址，`embeddedUrl` 给出第一个可打开的链接。
 class TextResult extends ScanResult {
   final String? embeddedUrl;
@@ -83,6 +88,9 @@ class ScanResultParser {
     }
     if (lower.startsWith('geo:')) {
       return GeoResult(raw);
+    }
+    if (lower.startsWith('fido:')) {
+      return FidoResult(raw);
     }
 
     final m = _scheme.firstMatch(raw);
