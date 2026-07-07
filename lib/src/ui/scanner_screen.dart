@@ -70,10 +70,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
     await Future.delayed(const Duration(milliseconds: 800));
     try {
       final lenses = await _controller.getSupportedLenses();
+      // 只有多于一个镜头才需要选择条；单/零镜头不显示。
       if (mounted && lenses.length > 1) {
-        setState(() => _lenses = lenses);
+        setState(() {
+          _lenses = lenses;
+          // 默认高亮：优先主摄，否则退到最广的可用镜头（兼容缺主摄的组合）。
+          if (!lenses.contains(_currentLens)) {
+            _currentLens = lenses.contains(CameraLensType.normal)
+                ? CameraLensType.normal
+                : (lenses.contains(CameraLensType.wide)
+                    ? CameraLensType.wide
+                    : CameraLensType.zoom);
+          }
+        });
       }
-    } catch (_) {/* 不支持多镜头则忽略 */}
+    } catch (_) {/* 不支持/查询失败：不显示镜头条 */}
   }
 
   // 镜头按等效焦距从广到长排序：超广角 → 主摄 → 长焦。
