@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../core/history_entry.dart';
@@ -43,6 +44,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     ImageProvider image,
     Size size,
     List<({Rect rect, String value})> targets,
+    String path, // 冻结帧落盘路径，供"再次深度检测"复用
   })? _frozen;
 
   @override
@@ -76,7 +78,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
     final frame = _lastCapture;
     _pendingCodes.clear();
     _lastCapture = null;
-    unawaited(_process(codes: codes, frameCapture: frame, galleryImage: null));
+    unawaited(_process(
+        codes: codes, frameCapture: frame, galleryImage: null, sourcePath: null));
   }
 
   Future<void> _pickFromGallery() async {
@@ -102,6 +105,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         codes: codes,
         frameCapture: capture,
         galleryImage: FileImage(File(file.path)),
+        sourcePath: file.path,
       );
     } catch (_) {
       if (mounted) _toast('识别失败');
@@ -109,12 +113,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
   }
 
-  // 统一入口：单个码直接出结果；多个码在冻结画面上点选（回退文本列表）。
-  // codes 已去重；frameCapture 提供冻结图与角点（实时=最后一帧，相册=该图）。
+  // 统一入口：单个码直接出结果；多个码在拍摄界面原地冻结点选。
+  // codes 已去重；frameCapture 提供角点；sourcePath 是可再检测的图像路径。
   Future<void> _process({
     required List<String> codes,
     required BarcodeCapture? frameCapture,
     required ImageProvider? galleryImage,
+    required String? sourcePath,
   }) async {
     if (codes.isEmpty) {
       _busy = false;
@@ -130,7 +135,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       return;
     }
 
-    // 多码：优先冻结画面点选。角点取自 frameCapture，仅保留 codes 里的、且每值一次。
+    // 多码：在拍摄界面原地冻结点选。角点取自 frameCapture，仅 codes 里的、每值一次。
     final image = galleryImage ??
         (frameCapture?.image != null ? MemoryImage(frameCapture!.image!) : null);
     final codeSet = codes.toSet();
@@ -145,19 +150,76 @@ class _ScannerScreenState extends State<ScannerScreen> {
             (rect: _cornersToRect(b.corners), value: b.rawValue!),
     ];
 
+    // 冻结帧落盘路径（相册用原图；实时把帧字节写临时文件），供"再次深度检测"。
+    String? path = sourcePath;
+    if (path == null && frameCapture?.image != null) {
+      path = await _writeTempFrame(frameCapture!.image!);
+    }
+
     if (image != null &&
+        path != null &&
         frameCapture != null &&
         frameCapture.size != Size.zero &&
         targets.isNotEmpty) {
-      // 原地冻结：亮出覆盖层，等用户点选/取消（回调里复位 _busy）。
+      // 原地冻结：亮出覆盖层，等用户点选/取消/再检测（回调里复位 _busy）。
       setState(() {
-        _frozen = (image: image, size: frameCapture.size, targets: targets);
+        _frozen = (
+          image: image,
+          size: frameCapture.size,
+          targets: targets,
+          path: path!,
+        );
       });
       return;
     }
 
     // 无法冻结点选（极少见：无帧/无角点）：放弃本次，继续扫。
     _busy = false;
+  }
+
+  // 把实时帧字节写到临时文件，供 analyzeImage 再检测。
+  Future<String> _writeTempFrame(Uint8List bytes) async {
+    final dir = await getTemporaryDirectory();
+    final f = File('${dir.path}/saole_frozen_frame.jpg');
+    await f.writeAsBytes(bytes, flush: true);
+    return f.path;
+  }
+
+  // 再次深度检测：对冻结帧重跑 analyzeImage（静态图分析更充分），合并新码。
+  Future<void> _redetect() async {
+    final f = _frozen;
+    if (f == null) return;
+    try {
+      final cap = await _controller.analyzeImage(f.path);
+      if (!mounted || _frozen == null) return;
+      final seen = {for (final t in _frozen!.targets) t.value};
+      final more = <({Rect rect, String value})>[];
+      if (cap != null) {
+        for (final b in cap.barcodes) {
+          final v = b.rawValue;
+          if (v == null || v.isEmpty) continue;
+          if (b.corners.length < 3) continue;
+          if (seen.add(v)) {
+            more.add((rect: _cornersToRect(b.corners), value: v));
+          }
+        }
+      }
+      if (more.isEmpty) {
+        _toast('没有检测到更多二维码');
+        return;
+      }
+      setState(() {
+        _frozen = (
+          image: _frozen!.image,
+          size: _frozen!.size,
+          targets: [..._frozen!.targets, ...more],
+          path: _frozen!.path,
+        );
+      });
+      _toast('又找到 ${more.length} 个');
+    } catch (_) {
+      if (mounted) _toast('检测失败');
+    }
   }
 
   void _onFrozenPick(String value) {
@@ -283,6 +345,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               targets: _frozen!.targets,
               onPick: _onFrozenPick,
               onCancel: _onFrozenCancel,
+              onRedetect: _redetect,
             ),
           ),
       ],

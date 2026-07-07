@@ -10,6 +10,7 @@ class FrozenQrOverlay extends StatelessWidget {
   final List<({Rect rect, String value})> targets;
   final ValueChanged<String> onPick;
   final VoidCallback onCancel;
+  final VoidCallback onRedetect;
 
   const FrozenQrOverlay({
     super.key,
@@ -18,6 +19,7 @@ class FrozenQrOverlay extends StatelessWidget {
     required this.targets,
     required this.onPick,
     required this.onCancel,
+    required this.onRedetect,
   });
 
   @override
@@ -89,6 +91,24 @@ class FrozenQrOverlay extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+        // 底部：再次深度检测（有时一帧检测不全，重跑静态分析补全）。
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: Center(
+                child: FilledButton.icon(
+                  onPressed: onRedetect,
+                  icon: const Icon(Icons.youtube_searched_for),
+                  label: const Text('再次深度检测'),
+                ),
+              ),
             ),
           ),
         ),
