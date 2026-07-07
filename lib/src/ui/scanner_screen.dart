@@ -55,8 +55,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
     _accelSub = accelerometerEventStream(
       samplingPeriod: SensorInterval.uiInterval,
     ).listen((e) {
-      // 竖持时 e.x < 0 ≈ 左倾、> 0 ≈ 右倾；±1.5 死区防抖。
-      final onLeft = e.x < -1.5 ? true : (e.x > 1.5 ? false : _sliderOnLeft);
+      // 竖持时 e.x > 0 ≈ 左倾、< 0 ≈ 右倾；±1.5 死区防抖。
+      final onLeft = e.x > 1.5 ? true : (e.x < -1.5 ? false : _sliderOnLeft);
       if (onLeft != _sliderOnLeft && mounted) {
         setState(() => _sliderOnLeft = onLeft);
       }
