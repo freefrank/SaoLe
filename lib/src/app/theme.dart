@@ -67,11 +67,21 @@ class SaoTokens extends ThemeExtension<SaoTokens> {
     radius: 14,
   );
 
-  static SaoTokens of(Brightness b) =>
-      b == Brightness.light ? light : dark;
+  static SaoTokens of(Brightness b) => b == Brightness.light ? light : dark;
 
   @override
-  SaoTokens copyWith() => this;
+  SaoTokens copyWith({Color? accent}) => SaoTokens(
+    brightness: brightness,
+    bg: bg,
+    panel: panel,
+    line: line,
+    text: text,
+    muted: muted,
+    accent: accent ?? this.accent,
+    good: good,
+    bad: bad,
+    radius: radius,
+  );
 
   @override
   SaoTokens lerp(ThemeExtension<SaoTokens>? other, double t) {
@@ -85,12 +95,17 @@ extension SaoThemeContext on BuildContext {
   SaoTokens get tokens => Theme.of(this).extension<SaoTokens>()!;
 }
 
-ThemeData buildSaoTheme(Brightness brightness) {
-  final t = SaoTokens.of(brightness);
-  final scheme = ColorScheme.fromSeed(
-    seedColor: t.accent,
-    brightness: brightness,
-  ).copyWith(primary: t.accent, error: t.bad, surface: t.panel);
+/// [dynamicScheme] 来自系统壁纸取色（Android 12+ Material You）；
+/// 传 null 时退回品牌蓝。中性面板/背景保持自有令牌，只让主色跟随系统。
+ThemeData buildSaoTheme(Brightness brightness, {ColorScheme? dynamicScheme}) {
+  var t = SaoTokens.of(brightness);
+  final scheme = dynamicScheme != null
+      ? dynamicScheme.copyWith(error: t.bad, surface: t.panel)
+      : ColorScheme.fromSeed(
+          seedColor: t.accent,
+          brightness: brightness,
+        ).copyWith(primary: t.accent, error: t.bad, surface: t.panel);
+  if (dynamicScheme != null) t = t.copyWith(accent: scheme.primary);
 
   final base = ThemeData(useMaterial3: true, brightness: brightness);
   return base.copyWith(

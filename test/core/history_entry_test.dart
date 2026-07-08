@@ -25,8 +25,13 @@ void main() {
 
   test('wifi 类型标签', () {
     final e = HistoryEntry.fromScan(
-      const WifiResult('WIFI:S:N;;',
-          ssid: 'N', password: '', security: 'nopass', hidden: false),
+      const WifiResult(
+        'WIFI:S:N;;',
+        ssid: 'N',
+        password: '',
+        security: 'nopass',
+        hidden: false,
+      ),
       DateTime.utc(2026),
     );
     expect(e.type, 'wifi');
@@ -34,7 +39,8 @@ void main() {
 
   test('fido 类型标签', () {
     final e = HistoryEntry.fromScan(
-      const FidoResult('FIDO:/abc'), DateTime.utc(2026),
+      const FidoResult('FIDO:/abc'),
+      DateTime.utc(2026),
     );
     expect(e.type, 'fido');
   });

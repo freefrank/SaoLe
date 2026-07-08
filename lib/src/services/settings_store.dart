@@ -18,7 +18,7 @@ class SettingsStore extends ChangeNotifier {
   static const _kContinuous = 'continuous';
   static const _kBrightness = 'brightness';
 
-  /// 扫到 URL/AppLink 即自动打开（默认关，防钓鱼）。
+  /// 扫到 http/https 网址即自动打开（默认关，防钓鱼；自定义 scheme 永远确认）。
   bool get autoOpen => _prefs.getBool(_kAutoOpen) ?? false;
   set autoOpen(bool v) => _set(_kAutoOpen, v);
 

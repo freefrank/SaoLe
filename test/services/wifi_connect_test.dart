@@ -16,13 +16,19 @@ void main() {
     });
 
     final ok = await const WifiConnect().connect(
-      ssid: 'Net', password: 'pw', security: 'WPA', hidden: false,
+      ssid: 'Net',
+      password: 'pw',
+      security: 'WPA',
+      hidden: false,
     );
 
     expect(ok, true);
     expect(received?.method, 'connect');
     expect(received?.arguments, {
-      'ssid': 'Net', 'password': 'pw', 'security': 'WPA', 'hidden': false,
+      'ssid': 'Net',
+      'password': 'pw',
+      'security': 'WPA',
+      'hidden': false,
     });
     messenger.setMockMethodCallHandler(channel, null);
   });
@@ -31,8 +37,12 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (call) async {
       throw PlatformException(code: 'ERR');
     });
-    final ok = await const WifiConnect()
-        .connect(ssid: 'N', password: '', security: 'nopass', hidden: false);
+    final ok = await const WifiConnect().connect(
+      ssid: 'N',
+      password: '',
+      security: 'nopass',
+      hidden: false,
+    );
     expect(ok, false);
     messenger.setMockMethodCallHandler(channel, null);
   });

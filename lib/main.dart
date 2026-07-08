@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -29,21 +30,26 @@ Future<void> main() async {
     settings = r.$3;
   } catch (_) {
     // 极端情况下（磁盘/权限）退化为可用的空态。
-    history = HistoryStore(file: File('${Directory.systemTemp.path}/saole_history.json'));
+    history = HistoryStore(
+      file: File('${Directory.systemTemp.path}/saole_history.json'),
+    );
     settings = await SettingsStore.forApp();
   }
 
-  runApp(SaoLeApp(
-    initialScanOnly: mode == 'scan_only',
-    history: history,
-    settings: settings,
-  ));
+  runApp(
+    SaoLeApp(
+      initialScanOnly: mode == 'scan_only',
+      history: history,
+      settings: settings,
+    ),
+  );
 }
 
 Future<String> _launchMode() async {
   try {
-    return await const MethodChannel('saole/launch')
-            .invokeMethod<String>('getMode') ??
+    return await const MethodChannel(
+          'saole/launch',
+        ).invokeMethod<String>('getMode') ??
         'normal';
   } on PlatformException {
     return 'normal';
@@ -97,10 +103,10 @@ class _SaoLeAppState extends State<SaoLeApp> with WidgetsBindingObserver {
   }
 
   ThemeMode _themeMode(SaoBrightness b) => switch (b) {
-        SaoBrightness.system => ThemeMode.system,
-        SaoBrightness.dark => ThemeMode.dark,
-        SaoBrightness.light => ThemeMode.light,
-      };
+    SaoBrightness.system => ThemeMode.system,
+    SaoBrightness.dark => ThemeMode.dark,
+    SaoBrightness.light => ThemeMode.light,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -109,16 +115,22 @@ class _SaoLeAppState extends State<SaoLeApp> with WidgetsBindingObserver {
         ChangeNotifierProvider.value(value: widget.history),
         ChangeNotifierProvider.value(value: widget.settings),
       ],
-      child: Consumer<SettingsStore>(
-        builder: (context, s, _) => MaterialApp(
-          title: '扫了',
-          debugShowCheckedModeBanner: false,
-          theme: buildSaoTheme(Brightness.light),
-          darkTheme: buildSaoTheme(Brightness.dark),
-          themeMode: _themeMode(s.brightness),
-          home: _scanOnly
-              ? const Scaffold(body: ScannerScreen(scanOnly: true))
-              : const HomeShell(),
+      // Material You：Android 12+ 跟随壁纸取色，取不到退回品牌蓝。
+      child: DynamicColorBuilder(
+        builder: (lightDynamic, darkDynamic) => Consumer<SettingsStore>(
+          builder: (context, s, _) => MaterialApp(
+            title: '扫了',
+            debugShowCheckedModeBanner: false,
+            theme: buildSaoTheme(Brightness.light, dynamicScheme: lightDynamic),
+            darkTheme: buildSaoTheme(
+              Brightness.dark,
+              dynamicScheme: darkDynamic,
+            ),
+            themeMode: _themeMode(s.brightness),
+            home: _scanOnly
+                ? const Scaffold(body: ScannerScreen(scanOnly: true))
+                : const HomeShell(),
+          ),
         ),
       ),
     );

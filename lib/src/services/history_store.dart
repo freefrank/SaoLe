@@ -9,6 +9,9 @@ import '../core/history_entry.dart';
 /// 历史记录存储：内存列表 + JSON 文件落盘。倒序（最新在前）。
 /// 损坏文件读取时优雅退化为空历史，绝不崩。
 class HistoryStore extends ChangeNotifier {
+  /// 历史条数上限，超出丢最旧的（无限增长会拖慢每次全量落盘）。
+  static const maxEntries = 500;
+
   final File file;
   final List<HistoryEntry> _entries = [];
 
@@ -31,7 +34,11 @@ class HistoryStore extends ChangeNotifier {
       if (raw.trim().isEmpty) return;
       final list = jsonDecode(raw) as List<dynamic>;
       for (final j in list) {
-        _entries.add(HistoryEntry.fromJson(j as Map<String, dynamic>));
+        if (_entries.length >= maxEntries) break;
+        // 单条损坏只跳过该条，不连累整个历史。
+        try {
+          _entries.add(HistoryEntry.fromJson(j as Map<String, dynamic>));
+        } catch (_) {}
       }
     } catch (_) {
       _entries.clear();
@@ -41,6 +48,19 @@ class HistoryStore extends ChangeNotifier {
 
   Future<void> add(HistoryEntry e) async {
     _entries.insert(0, e);
+    if (_entries.length > maxEntries) {
+      _entries.removeRange(maxEntries, _entries.length);
+    }
+    notifyListeners();
+    await _flush();
+  }
+
+  /// 插回指定位置（撤销删除用）。索引越界时夹到边界。
+  Future<void> insertAt(int index, HistoryEntry e) async {
+    _entries.insert(index.clamp(0, _entries.length), e);
+    if (_entries.length > maxEntries) {
+      _entries.removeRange(maxEntries, _entries.length);
+    }
     notifyListeners();
     await _flush();
   }
@@ -68,7 +88,10 @@ class HistoryStore extends ChangeNotifier {
   Future<void> _flush() async {
     try {
       final data = jsonEncode(_entries.map((e) => e.toJson()).toList());
-      await file.writeAsString(data);
+      // 先写临时文件再 rename：进程中途被杀也不会留下半截 JSON。
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(data, flush: true);
+      await tmp.rename(file.path);
     } catch (_) {
       // 落盘失败不影响内存态与 UI；下次变更再尝试。
     }

@@ -1,7 +1,11 @@
 package pro.dotslash.saole
 
 import android.content.Intent
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.net.wifi.WifiNetworkSuggestion
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -41,6 +45,26 @@ class MainActivity : FlutterActivity() {
             } else {
                 result.notImplemented()
             }
+        }
+
+        MethodChannel(messenger, "saole/beep").setMethodCallHandler { call, result ->
+            if (call.method == "beep") {
+                result.success(playBeep())
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    // 扫码提示音：媒体流上一声短哔；用完延时 release，失败不打扰扫码。
+    private fun playBeep(): Boolean {
+        return try {
+            val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+            Handler(Looper.getMainLooper()).postDelayed({ tone.release() }, 300)
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 

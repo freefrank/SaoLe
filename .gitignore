@@ -50,3 +50,10 @@ app.*.map.json
 
 # 构建产物 APK（不提交）
 /SaoLe-*.apk
+
+# 本地发布产物与笔记（不入库）
+SaoLe-*.zip
+SaoLe-install-notes.txt
+
+# CodeGraph 本地索引
+.codegraph/

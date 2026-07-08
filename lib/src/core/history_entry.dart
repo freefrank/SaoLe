@@ -16,25 +16,25 @@ class HistoryEntry {
       HistoryEntry(content: r.raw, type: kindOf(r), timestamp: timestamp);
 
   static String kindOf(ScanResult r) => switch (r) {
-        UrlResult() => 'url',
-        AppLinkResult() => 'applink',
-        WifiResult() => 'wifi',
-        TelResult() => 'tel',
-        EmailResult() => 'email',
-        GeoResult() => 'geo',
-        FidoResult() => 'fido',
-        TextResult() => 'text',
-      };
+    UrlResult() => 'url',
+    AppLinkResult() => 'applink',
+    WifiResult() => 'wifi',
+    TelResult() => 'tel',
+    EmailResult() => 'email',
+    GeoResult() => 'geo',
+    FidoResult() => 'fido',
+    TextResult() => 'text',
+  };
 
   Map<String, dynamic> toJson() => {
-        'content': content,
-        'type': type,
-        'ts': timestamp.toIso8601String(),
-      };
+    'content': content,
+    'type': type,
+    'ts': timestamp.toIso8601String(),
+  };
 
   factory HistoryEntry.fromJson(Map<String, dynamic> j) => HistoryEntry(
-        content: j['content'] as String,
-        type: j['type'] as String,
-        timestamp: DateTime.parse(j['ts'] as String),
-      );
+    content: j['content'] as String,
+    type: j['type'] as String,
+    timestamp: DateTime.parse(j['ts'] as String),
+  );
 }

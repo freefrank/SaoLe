@@ -64,12 +64,13 @@ class ScanResultParser {
   const ScanResultParser();
 
   // 停在空白或常见 CJK 闭合标点前（中文场景 URL 后常无空格）。
-  static final _embeddedUrl =
-      RegExp(r'https?://[^\s，。；！？、）】》「」『』]+', caseSensitive: false);
+  static final _embeddedUrl = RegExp(
+    r'https?://[^\s，。；！？、）】》「」『』]+',
+    caseSensitive: false,
+  );
   static final _scheme = RegExp(r'^([a-zA-Z][a-zA-Z0-9+.\-]*):');
   // 再 strip 尾部 ASCII/CJK 标点（如英文括号包裹、句尾逗号句号）。
-  static final _trailingPunct =
-      RegExp(r'[)\]}>.,;!?，。；！？）】》、]+$');
+  static final _trailingPunct = RegExp(r'[)\]}>.,;!?，。；！？）】》、]+$');
 
   ScanResult parse(String raw) {
     final lower = raw.toLowerCase();
@@ -140,7 +141,12 @@ class ScanResultParser {
           hidden = value.toLowerCase() == 'true';
       }
     }
-    return WifiResult(raw,
-        ssid: ssid, password: password, security: security, hidden: hidden);
+    return WifiResult(
+      raw,
+      ssid: ssid,
+      password: password,
+      security: security,
+      hidden: hidden,
+    );
   }
 }

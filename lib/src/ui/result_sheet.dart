@@ -4,8 +4,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../app/theme.dart';
 import '../core/scan_result.dart';
+import '../core/url_display.dart';
 import '../services/platform/launcher.dart';
 import '../services/platform/wifi_connect.dart';
+import 'type_style.dart';
 
 /// 弹出结果底部面板：按 [ScanResult] 类型给出对应动作。
 /// FIDO 例外：不弹面板，直接唤起系统认证流程。
@@ -35,10 +37,35 @@ class _ResultSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(_title(result), style: TextStyle(color: t.muted, fontSize: 13)),
-            const SizedBox(height: 6),
-            SelectableText(result.raw,
-                maxLines: 4, style: TextStyle(color: t.text, fontSize: 16)),
+            // 类型徽章：带类型色的圆形图标 + 标题，一眼分清扫到了什么。
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _style.color.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(_style.icon, color: _style.color, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _title(result),
+                  style: TextStyle(
+                    color: t.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // 长内容限高可滚动：再长的链接/文本也能看全，不截断。
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 160),
+              child: SingleChildScrollView(child: _content(t)),
+            ),
             const SizedBox(height: 16),
             ..._actions(context, result),
           ],
@@ -47,16 +74,42 @@ class _ResultSheet extends StatelessWidget {
     );
   }
 
+  TypeStyle get _style => TypeStyle.ofResult(result);
+
+  /// 正文：URL 高亮域名（域名加粗主色、其余弱化，防钓鱼一眼看清真实站点）。
+  Widget _content(SaoTokens t) {
+    final r = result;
+    if (r is UrlResult) {
+      final parts = splitUrlForDisplay(r.raw);
+      if (parts != null) {
+        return SelectableText.rich(
+          TextSpan(
+            style: TextStyle(color: t.muted, fontSize: 16),
+            children: [
+              TextSpan(text: parts.prefix),
+              TextSpan(
+                text: parts.host,
+                style: TextStyle(color: t.text, fontWeight: FontWeight.w700),
+              ),
+              TextSpan(text: parts.suffix),
+            ],
+          ),
+        );
+      }
+    }
+    return SelectableText(r.raw, style: TextStyle(color: t.text, fontSize: 16));
+  }
+
   String _title(ScanResult r) => switch (r) {
-        UrlResult() => '网址',
-        AppLinkResult() => '应用链接',
-        WifiResult() => 'WiFi 网络',
-        TelResult() => '电话',
-        EmailResult() => '邮箱',
-        GeoResult() => '位置',
-        FidoResult() => 'FIDO 安全密钥',
-        TextResult() => '文本',
-      };
+    UrlResult() => '网址',
+    AppLinkResult() => '应用链接',
+    WifiResult() => 'WiFi 网络',
+    TelResult() => '电话',
+    EmailResult() => '邮箱',
+    GeoResult() => '位置',
+    FidoResult() => 'FIDO 安全密钥',
+    TextResult() => '文本',
+  };
 
   List<Widget> _actions(BuildContext context, ScanResult r) {
     switch (r) {
@@ -68,8 +121,11 @@ class _ResultSheet extends StatelessWidget {
         ];
       case AppLinkResult():
         return [
-          _Primary('打开应用', Icons.open_in_new,
-              () => _open(context, r.raw, fallbackMsg: '没有应用能打开此链接')),
+          _Primary(
+            '打开应用',
+            Icons.open_in_new,
+            () => _open(context, r.raw, fallbackMsg: '没有应用能打开此链接'),
+          ),
           _Sub('复制', () => _copy(context, r.raw)),
         ];
       case WifiResult():
@@ -85,7 +141,11 @@ class _ResultSheet extends StatelessWidget {
         ];
       case EmailResult():
         return [
-          _Primary('写邮件', Icons.email, () => _open(context, 'mailto:${r.address}')),
+          _Primary(
+            '写邮件',
+            Icons.email,
+            () => _open(context, 'mailto:${r.address}'),
+          ),
           _Sub('复制', () => _copy(context, r.address)),
         ];
       case GeoResult():
@@ -102,15 +162,22 @@ class _ResultSheet extends StatelessWidget {
       case TextResult():
         return [
           if (r.embeddedUrl != null)
-            _Primary('打开链接', Icons.open_in_browser,
-                () => _open(context, r.embeddedUrl!)),
+            _Primary(
+              '打开链接',
+              Icons.open_in_browser,
+              () => _open(context, r.embeddedUrl!),
+            ),
           _Primary('复制', Icons.copy, () => _copy(context, r.raw)),
           _Sub('分享', () => _share(r.raw)),
         ];
     }
   }
 
-  Future<void> _open(BuildContext context, String url, {String? fallbackMsg}) async {
+  Future<void> _open(
+    BuildContext context,
+    String url, {
+    String? fallbackMsg,
+  }) async {
     final ok = await const Launcher().open(url);
     if (!context.mounted) return;
     if (!ok) {
@@ -123,7 +190,10 @@ class _ResultSheet extends StatelessWidget {
   Future<void> _connectWifi(BuildContext context, WifiResult r) async {
     await Clipboard.setData(ClipboardData(text: r.password));
     final ok = await const WifiConnect().connect(
-      ssid: r.ssid, password: r.password, security: r.security, hidden: r.hidden,
+      ssid: r.ssid,
+      password: r.password,
+      security: r.security,
+      hidden: r.hidden,
     );
     if (!context.mounted) return;
     _snack(context, ok ? '密码已复制，在系统面板确认连接' : 'WiFi 面板不可用，密码已复制');
@@ -137,7 +207,8 @@ class _ResultSheet extends StatelessWidget {
     Navigator.of(context).pop();
   }
 
-  Future<void> _share(String text) => Share.share(text);
+  Future<void> _share(String text) =>
+      SharePlus.instance.share(ShareParams(text: text));
 
   void _snack(BuildContext context, String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -151,9 +222,13 @@ class _Primary extends StatelessWidget {
   const _Primary(this.label, this.icon, this.onTap);
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: FilledButton.icon(onPressed: onTap, icon: Icon(icon), label: Text(label)),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: FilledButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon),
+      label: Text(label),
+    ),
+  );
 }
 
 class _Sub extends StatelessWidget {
@@ -162,7 +237,7 @@ class _Sub extends StatelessWidget {
   const _Sub(this.label, this.onTap);
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: OutlinedButton(onPressed: onTap, child: Text(label)),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: OutlinedButton(onPressed: onTap, child: Text(label)),
+  );
 }
